@@ -59,6 +59,27 @@ def normalize_base_url(value: str) -> str:
     return value.rstrip("/")
 
 
+def resolve_base_url(value: str, port: int | None = None) -> str:
+    """Normalize an API URL and optionally replace its TCP port."""
+    base_url = normalize_base_url(value)
+    parts = urlsplit(base_url)
+    if parts.username or parts.password:
+        raise BenchmarkError(
+            "Do not embed credentials in --base-url; provide the API key through "
+            "--api-key-env instead."
+        )
+    if port is None:
+        return base_url
+    if not parts.scheme or not parts.hostname:
+        raise BenchmarkError(
+            "--base-url must include a scheme and host when --port is used"
+        )
+    host = f"[{parts.hostname}]" if ":" in parts.hostname else parts.hostname
+    return urlunsplit(
+        (parts.scheme, f"{host}:{port}", parts.path, parts.query, parts.fragment)
+    )
+
+
 def api_headers(api_key: str | None) -> dict[str, str]:
     headers = {"Content-Type": "application/json"}
     if api_key:
@@ -491,13 +512,7 @@ def command_run(args: argparse.Namespace) -> None:
     document = load_document(result_path) if result_path.exists() else None
     api_key = os.environ.get(args.api_key_env) if args.api_key_env else None
     headers = api_headers(api_key)
-    base_url = normalize_base_url(args.base_url)
-    parsed_base_url = urlsplit(base_url)
-    if parsed_base_url.username or parsed_base_url.password:
-        raise BenchmarkError(
-            "Do not embed credentials in --base-url; provide the API key through "
-            "--api-key-env instead."
-        )
+    base_url = resolve_base_url(args.base_url, args.port)
     discovered_model = discover_model(base_url, headers, args.timeout)
     workload = resolve_workload(
         args,
@@ -579,6 +594,10 @@ def build_parser() -> argparse.ArgumentParser:
   # Restart with MTP-4, then append the same frozen workload:
   ./benchmark-model-configs.py run --label mtp4 --results /tmp/qwen-mtp.json
 
+  # Target a server listening on a non-default port:
+  ./benchmark-model-configs.py run --label sglang --port 30000 \
+    --results /tmp/qwen-mtp.json
+
   ./benchmark-model-configs.py compare --results /tmp/qwen-mtp.json
 
 The default workload uses greedy decoding, a fixed seed, ignore_eos=true, and
@@ -599,7 +618,12 @@ The default workload uses greedy decoding, a fixed seed, ignore_eos=true, and
     run.add_argument(
         "--base-url",
         default="http://127.0.0.1:8000/v1",
-        help="OpenAI-compatible v1 URL",
+        help="OpenAI-compatible v1 URL (default: http://127.0.0.1:8000/v1)",
+    )
+    run.add_argument(
+        "--port",
+        type=int,
+        help="LLM server port; overrides the port in --base-url",
     )
     run.add_argument("--model", help="Model ID; defaults to the first /v1/models entry")
     prompt_group = run.add_mutually_exclusive_group()
@@ -647,6 +671,8 @@ def validate_args(args: argparse.Namespace) -> None:
         raise BenchmarkError("--max-tokens must be at least 2")
     if args.timeout <= 0:
         raise BenchmarkError("--timeout must be positive")
+    if args.port is not None and not 1 <= args.port <= 65535:
+        raise BenchmarkError("--port must be between 1 and 65535")
     if args.temperature is not None and args.temperature < 0:
         raise BenchmarkError("--temperature cannot be negative")
     if args.top_p is not None and not 0 < args.top_p <= 1:

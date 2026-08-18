@@ -12,7 +12,6 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlsplit
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -334,12 +333,7 @@ def task_workload(
 
 def command_run(args: argparse.Namespace) -> None:
     existing = load_document(args.results) if args.results.exists() else None
-    base_url = CORE.normalize_base_url(args.base_url)
-    parsed_url = urlsplit(base_url)
-    if parsed_url.username or parsed_url.password:
-        raise CORE.BenchmarkError(
-            "Do not embed credentials in --base-url; use --api-key-env instead."
-        )
+    base_url = CORE.resolve_base_url(args.base_url, args.port)
     api_key = os.environ.get(args.api_key_env) if args.api_key_env else None
     headers = CORE.api_headers(api_key)
     discovered_model = CORE.discover_model(base_url, headers, args.timeout)
@@ -446,6 +440,9 @@ def build_parser() -> argparse.ArgumentParser:
   ./benchmark-code-generation.py run --label mtp3 --results /tmp/qwen-code.json
   # Restart the server with MTP-4.
   ./benchmark-code-generation.py run --label mtp4 --results /tmp/qwen-code.json
+  # Or target a server listening on a non-default port.
+  ./benchmark-code-generation.py run --label sglang --port 30000 \
+    --results /tmp/qwen-code.json
   ./benchmark-code-generation.py compare --details --results /tmp/qwen-code.json
 
 The first run freezes the suite and settings. Later configurations reuse them.
@@ -465,7 +462,12 @@ Default cost per configuration: 1 warm-up plus 4 tasks x 3 runs x 512 tokens.
     run.add_argument(
         "--base-url",
         default="http://127.0.0.1:8000/v1",
-        help="OpenAI-compatible v1 URL",
+        help="OpenAI-compatible v1 URL (default: http://127.0.0.1:8000/v1)",
+    )
+    run.add_argument(
+        "--port",
+        type=int,
+        help="LLM server port; overrides the port in --base-url",
     )
     run.add_argument("--model", help="Model ID; defaults to the first /v1/models entry")
     run.add_argument("--suite-file", type=Path, help="Custom JSON task suite for a new session")
@@ -508,6 +510,8 @@ def validate_args(args: argparse.Namespace) -> None:
         raise CORE.BenchmarkError("--warmups cannot be negative")
     if args.timeout <= 0:
         raise CORE.BenchmarkError("--timeout must be positive")
+    if args.port is not None and not 1 <= args.port <= 65535:
+        raise CORE.BenchmarkError("--port must be between 1 and 65535")
 
 
 def main() -> int:
