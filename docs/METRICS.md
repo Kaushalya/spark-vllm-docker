@@ -22,8 +22,8 @@ The repository includes a ready-to-run monitoring stack:
   Throughput** dashboard.
 - `grafana/dashboards/vllm-spec-decode.json` defines the **vLLM Speculative
   Decoding** dashboard.
-- `grafana/dashboards/sglang-dspark.json` defines the **SGLang DSpark**
-  dashboard, including SGLang's native speculative-decoding gauges.
+- `grafana/dashboards/sglang-dspark.json` defines the **SGLang Speculative
+  Decoding** dashboard, including SGLang's native speculative-decoding gauges.
 
 The default configuration assumes vLLM is listening on port `8000` on the
 Docker host. Confirm the endpoint first:
@@ -173,24 +173,28 @@ imported into Grafana:
 
 <https://docs.vllm.ai/en/latest/examples/observability/prometheus_grafana/>
 
-## SGLang and DSpark panels
+## SGLang speculative-decoding panels
 
-The **SGLang DSpark** dashboard queries the SGLang exporter directly for
-request state, cache pressure, latency histograms, and speculative-decoding
-gauges. The pinned SGLang build exposes metric names with the `sglang:`
-prefix, including the colon. If you run a different SGLang build, confirm the
-names against the server's `/metrics` output.
+The **SGLang Speculative Decoding** dashboard queries the SGLang exporter
+directly for request state, cache pressure, latency histograms, and
+speculative-decoding gauges. It applies to native MTP/NEXTN, DSpark, EAGLE,
+and other SGLang speculative methods that expose these metrics. The pinned
+SGLang build exposes metric names with the `sglang:` prefix, including the
+colon. If you run a different SGLang build, confirm the names against the
+server's `/metrics` output.
 
-The DSpark panels use:
+The generic speculative-decoding panels use:
 
 - `sglang:spec_accept_rate` — accepted draft tokens divided by proposed draft
   tokens for the most recently reported batch.
 - `sglang:spec_accept_length` — mean accepted drafts plus the target/bonus token
   per verification forward pass.
-- `sglang:spec_block_accept_length` — uncapped full-block accepted length. This
-  is exact only when DSpark cap-accept mode is active.
+- `sglang:spec_block_accept_length` — uncapped full-block accepted length. It
+  is exact only when DSpark cap-accept mode is active and is otherwise zero or
+  unavailable.
 - `sglang:spec_cap_length` — confidence-scheduled verification window including
-  the bonus slot; it remains zero when no cap is scheduled.
+  the bonus slot. It is used by DSpark and remains zero when no cap is
+  scheduled.
 
 These are gauges rather than cumulative counters. Query and graph them
 directly; do not apply `rate()` to them. The dashboard also graphs the
@@ -205,7 +209,7 @@ from these histograms:
 SGLang metrics are created when the server starts, but throughput and latency
 panels require request traffic and at least two Prometheus scrapes before they
 show meaningful values. The pinned SGLang build updates the batch-level
-DSpark gauges every 40 decode steps by default, so a very short completion
+speculative-decoding gauges every 40 decode steps by default, so a very short completion
 can leave those gauges at zero even though token and verification counters
 increase.
 
