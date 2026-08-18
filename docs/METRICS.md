@@ -45,6 +45,48 @@ curl http://127.0.0.1:30000/metrics
 dashboard. It can add model-flops-utilization metrics when that additional
 instrumentation is desired.
 
+## Pinned SGLang build
+
+The SGLang metrics in this repository were developed and verified against a
+specific nightly build, pinned here for reproducibility:
+
+| Property | Value |
+| --- | --- |
+| Upstream image tag | `lmsysorg/sglang:nightly-dev-20260814-c4271c3f` |
+| Local image tag used on this host | `lmsysorg/sglang:qwen38-27b` |
+| SGLang build commit | `c4271c3fe1262fc2adbd162c33b25de5255251c5` |
+| Build | <https://github.com/sgl-project/sglang/actions/runs/31757139994> |
+| Image ID | `sha256:0076dffa60b76b7bf033c04d05e0cc69d46f2b8cd60aa2468827782afe9bc38f` |
+| FlashInfer | `0.6.18.dev20260807` |
+
+This is a nightly development build without a release version, so pin the
+image by the upstream tag or image ID above. The server used to verify the
+dashboard was launched with the Qwen3.8-27B DSpark configuration:
+
+```bash
+docker run --rm -it --name sglang-dspark \
+  --gpus all -p 30000:30000 \
+  -v "${HF_CACHE:-$HOME/.cache/huggingface}:/root/.cache/huggingface" \
+  lmsysorg/sglang:nightly-dev-20260814-c4271c3f \
+  sglang serve --trust-remote-code \
+    --model-path RadixArk/Qwen3.8-27B-NVFP4 \
+    --speculative-algorithm DSPARK \
+    --speculative-draft-model-path RadixArk/Qwen3.8-27B-DSpark \
+    --speculative-draft-attention-backend flashinfer \
+    --kv-cache-dtype fp8_e4m3 \
+    --mem-fraction-static 0.95 \
+    --attention-backend flashinfer \
+    --chunked-prefill-size 8192 \
+    --disable-prefill-cuda-graph \
+    --reasoning-parser qwen3 \
+    --tool-call-parser qwen3_coder \
+    --mamba-radix-cache-strategy extra_buffer \
+    --mamba-ssm-dtype float32 \
+    --mamba-full-memory-ratio 6.626953125 \
+    --host 0.0.0.0 --port 30000 \
+    --enable-metrics
+```
+
 ## Start Prometheus and Grafana
 
 From the repository root, start both services:
@@ -135,9 +177,9 @@ imported into Grafana:
 
 The **SGLang DSpark** dashboard queries the SGLang exporter directly for
 request state, cache pressure, latency histograms, and speculative-decoding
-gauges. The SGLang builds used to develop this dashboard expose metric names
-with the `sglang:` prefix, including the colon. If you run a different SGLang
-build, confirm the names against the server's `/metrics` output.
+gauges. The pinned SGLang build exposes metric names with the `sglang:`
+prefix, including the colon. If you run a different SGLang build, confirm the
+names against the server's `/metrics` output.
 
 The DSpark panels use:
 
@@ -162,10 +204,10 @@ from these histograms:
 
 SGLang metrics are created when the server starts, but throughput and latency
 panels require request traffic and at least two Prometheus scrapes before they
-show meaningful values. The builds used for this dashboard update the
-batch-level DSpark gauges every 40 decode steps by default, so a very short
-completion can leave those gauges at zero even though token and verification
-counters increase.
+show meaningful values. The pinned SGLang build updates the batch-level
+DSpark gauges every 40 decode steps by default, so a very short completion
+can leave those gauges at zero even though token and verification counters
+increase.
 
 ## Speculative decoding and MTP panels
 
