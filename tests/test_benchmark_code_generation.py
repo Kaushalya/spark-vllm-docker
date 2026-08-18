@@ -101,5 +101,24 @@ class AggregateTests(unittest.TestCase):
             CODE.aggregate_task_results(task_results)
 
 
+class ServerAddressTests(unittest.TestCase):
+    def test_parser_accepts_server_port(self):
+        args = CODE.build_parser().parse_args(
+            ["run", "--label", "sglang", "--port", "30000"]
+        )
+
+        CODE.validate_args(args)
+
+        self.assertEqual(args.port, 30000)
+
+    def test_rejects_out_of_range_port(self):
+        args = CODE.build_parser().parse_args(
+            ["run", "--label", "invalid", "--port", "0"]
+        )
+
+        with self.assertRaises(CODE.CORE.BenchmarkError):
+            CODE.validate_args(args)
+
+
 if __name__ == "__main__":
     unittest.main()

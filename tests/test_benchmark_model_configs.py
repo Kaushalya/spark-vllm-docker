@@ -101,5 +101,46 @@ class StreamSchemaTests(unittest.TestCase):
         )
 
 
+class ServerAddressTests(unittest.TestCase):
+    def test_port_overrides_base_url_port(self):
+        self.assertEqual(
+            BENCH.resolve_base_url("http://127.0.0.1:8000/v1", 30000),
+            "http://127.0.0.1:30000/v1",
+        )
+
+    def test_port_override_preserves_ipv6_host_and_url_components(self):
+        self.assertEqual(
+            BENCH.resolve_base_url("https://[::1]:8000/v1/?mode=test#fragment", 30000),
+            "https://[::1]:30000/v1/?mode=test#fragment",
+        )
+
+    def test_omitted_port_preserves_existing_base_url(self):
+        self.assertEqual(
+            BENCH.resolve_base_url("http://server.example:9000/v1/"),
+            "http://server.example:9000/v1",
+        )
+
+    def test_rejects_credentials_before_replacing_port(self):
+        with self.assertRaises(BENCH.BenchmarkError):
+            BENCH.resolve_base_url("http://user:secret@localhost:8000/v1", 30000)
+
+    def test_parser_accepts_server_port(self):
+        args = BENCH.build_parser().parse_args(
+            ["run", "--label", "sglang", "--port", "30000"]
+        )
+
+        BENCH.validate_args(args)
+
+        self.assertEqual(args.port, 30000)
+
+    def test_rejects_out_of_range_port(self):
+        args = BENCH.build_parser().parse_args(
+            ["run", "--label", "invalid", "--port", "65536"]
+        )
+
+        with self.assertRaises(BENCH.BenchmarkError):
+            BENCH.validate_args(args)
+
+
 if __name__ == "__main__":
     unittest.main()

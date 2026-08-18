@@ -1,4 +1,19 @@
 groups:
+  - name: sglang-throughput
+    interval: 5s
+    rules:
+      - record: sglang:generation_tokens_per_second:rate1m
+        expr: sum(rate(sglang:generation_tokens_total{job="sglang"}[1m]))
+
+      - record: sglang:prompt_tokens_per_second:rate1m
+        expr: sum(rate(sglang:prompt_tokens_total{job="sglang"}[1m]))
+
+      - record: sglang:total_tokens_per_second:rate1m
+        expr: >-
+          sum(rate(sglang:generation_tokens_total{job="sglang"}[1m]))
+          +
+          sum(rate(sglang:prompt_tokens_total{job="sglang"}[1m]))
+
   - name: vllm-throughput
     interval: 5s
     rules:

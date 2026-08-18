@@ -1,27 +1,29 @@
-# Visualizing vLLM metrics with Prometheus and Grafana
+# Visualizing vLLM and SGLang metrics with Prometheus and Grafana
 
-vLLM exposes Prometheus metrics from the OpenAI-compatible server at
-`/metrics`. This setup runs Prometheus and Grafana alongside an existing
-vLLM container, providing a web UI for request latency, throughput, KV-cache
-usage, and speculative-decoding performance.
+vLLM and SGLang expose Prometheus metrics from their OpenAI-compatible servers
+at `/metrics` when metrics are enabled. This setup runs Prometheus and Grafana
+alongside either server, providing a web UI for request latency, throughput,
+cache usage, and speculative-decoding performance.
 
 The repository includes a ready-to-run monitoring stack:
 
 - `docker-compose.metrics.yaml` runs Prometheus and Grafana with persistent
   named volumes. The images are pinned to Prometheus 3.13.2 and Grafana 13.1.3
   so deployments do not change unexpectedly when upstream `latest` tags move.
-- `prometheus.yaml` scrapes the vLLM server from the Docker host every five
-  seconds.
+- `prometheus.yaml` scrapes vLLM on port 8000 and SGLang on port 30000 from the
+  Docker host every five seconds. It is valid for one target to be down while
+  the other backend is in use.
 - `prometheus-rules.yaml` records one-minute averages for prompt, generation,
-  and total token throughput, plus speculative-decoding metrics (acceptance
-  rate, mean accepted length, draft and accepted token rates, and
-  per-position acceptance).
+  and total token throughput for both servers, plus vLLM speculative-decoding
+  counters.
 - `grafana/provisioning/` configures Prometheus as Grafana's default data source
   and loads dashboards from disk.
 - `grafana/dashboards/vllm-throughput.json` defines the default **vLLM
   Throughput** dashboard.
 - `grafana/dashboards/vllm-spec-decode.json` defines the **vLLM Speculative
   Decoding** dashboard.
+- `grafana/dashboards/sglang-dspark.json` defines the **SGLang DSpark**
+  dashboard, including SGLang's native speculative-decoding gauges.
 
 The default configuration assumes vLLM is listening on port `8000` on the
 Docker host. Confirm the endpoint first:
@@ -29,6 +31,17 @@ Docker host. Confirm the endpoint first:
 ```bash
 curl http://127.0.0.1:8000/metrics
 ```
+
+For SGLang, include `--enable-metrics` in `sglang serve`; the flag cannot be
+enabled on an already-running server. With the standard SGLang port, verify:
+
+```bash
+curl http://127.0.0.1:30000/metrics
+```
+
+`--enable-mfu-metrics` is optional and is not required by the provisioned
+dashboard. It can add model-flops-utilization metrics when that additional
+instrumentation is desired.
 
 ## Start Prometheus and Grafana
 
@@ -42,8 +55,9 @@ Run the same command after changing the Compose file or provisioning files.
 Compose recreates affected containers when their configuration changes; a plain
 `docker compose restart` does not apply new mounts or environment settings.
 
-If vLLM uses a different host port, update the target in `prometheus.yaml`
-before starting the stack. You can inspect service state and logs with:
+If either server uses a different host port, update its target in
+`prometheus.yaml` before starting the stack. You can inspect service state and
+logs with:
 
 ```bash
 docker compose -f docker-compose.metrics.yaml ps
@@ -56,16 +70,17 @@ of the head node:
 - Grafana: `http://<spark-ip>:3000`
 - Prometheus: `http://<spark-ip>:9090`
 
-The initial Grafana login is `admin` / `admin`. Grafana will ask you to
-change the password after the first login. The provisioned **vLLM Throughput**
-dashboard opens as the home dashboard and shows one-minute averages for prompt,
-generation, and total token throughput.
+The initial Grafana login is `admin` / `admin`. Grafana will ask you to change
+the password after the first login. The provisioned **vLLM Throughput**
+dashboard remains the home dashboard. The vLLM and SGLang dashboards appear in
+the **LLM Inference** folder.
 
 ## Provisioned data source and dashboard
 
 The Compose stack provisions Prometheus as Grafana's default data source at
 startup. No manual data-source setup is required. Check
-`http://<spark-ip>:9090/targets`; the `vllm` target should be `UP`.
+`http://<spark-ip>:9090/targets`; the target for the active backend should be
+`UP`.
 
 The dashboard uses these recording rules from `prometheus-rules.yaml`:
 
@@ -74,6 +89,14 @@ The dashboard uses these recording rules from `prometheus-rules.yaml`:
 | `vllm:generation_tokens_per_second:rate1m` | Output tokens per second |
 | `vllm:prompt_tokens_per_second:rate1m` | Input/prompt tokens per second |
 | `vllm:total_tokens_per_second:rate1m` | Combined input and output tokens per second |
+
+The SGLang dashboard uses the equivalent recording rules:
+
+| Recorded metric | Meaning |
+| --- | --- |
+| `sglang:generation_tokens_per_second:rate1m` | Output tokens per second |
+| `sglang:prompt_tokens_per_second:rate1m` | Input/prompt tokens per second |
+| `sglang:total_tokens_per_second:rate1m` | Combined input and output tokens per second |
 
 The same dashboard also queries current vLLM metrics directly for latency and
 KV-cache pressure:
@@ -106,11 +129,45 @@ imported into Grafana:
 
 <https://docs.vllm.ai/en/latest/examples/observability/prometheus_grafana/>
 
+## SGLang and DSpark panels
+
+The **SGLang DSpark** dashboard queries the SGLang exporter directly for
+request state, cache pressure, latency histograms, and speculative-decoding
+gauges. In this repository's pinned SGLang image, metric names retain the
+`sglang:` prefix with a colon.
+
+The DSpark panels use:
+
+- `sglang:spec_accept_rate` — accepted draft tokens divided by proposed draft
+  tokens for the most recently reported batch.
+- `sglang:spec_accept_length` — mean accepted drafts plus the target/bonus token
+  per verification forward pass.
+- `sglang:spec_block_accept_length` — uncapped full-block accepted length. This
+  is exact only when DSpark cap-accept mode is active.
+- `sglang:spec_cap_length` — confidence-scheduled verification window including
+  the bonus slot; it remains zero when no cap is scheduled.
+
+These are gauges rather than cumulative counters. Query and graph them
+directly; do not apply `rate()` to them. The dashboard also graphs the
+`sglang:prompt_tokens_total` and `sglang:generation_tokens_total` counters
+through the one-minute recording rules, and calculates latency percentiles
+from these histograms:
+
+- `sglang:time_to_first_token_seconds`
+- `sglang:inter_token_latency_seconds`
+- `sglang:e2e_request_latency_seconds`
+
+SGLang metrics are created when the server starts, but throughput and latency
+panels require request traffic and at least two Prometheus scrapes before they
+show meaningful values. The pinned SGLang image updates the batch-level DSpark
+gauges every 40 decode steps by default, so a very short completion can leave
+those gauges at zero even though token and verification counters increase.
+
 ## Speculative decoding and MTP panels
 
 The provisioned **vLLM Speculative Decoding** dashboard
 (`grafana/dashboards/vllm-spec-decode.json`) covers these metrics out of the
-box. It appears in the **vLLM** folder and queries the `vllm:spec_decode_*`
+box. It appears in the **LLM Inference** folder and queries the `vllm:spec_decode_*`
 recording rules from the `vllm-spec-decode` group in `prometheus-rules.yaml`:
 
 - **Draft acceptance rate** — fraction of draft tokens accepted

@@ -9,3 +9,8 @@ scrape_configs:
     static_configs:
       - targets:
           - host.docker.internal:8000
+
+  - job_name: sglang
+    static_configs:
+      - targets:
+          - host.docker.internal:30000
