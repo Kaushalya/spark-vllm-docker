@@ -90,6 +90,16 @@ class SGLangDashboardTests(unittest.TestCase):
             )
         )
 
+    def test_panel_ids_are_unique_and_fit_the_grid(self):
+        panels = self.dashboard["panels"]
+        ids = [panel["id"] for panel in panels]
+
+        self.assertEqual(len(ids), len(set(ids)))
+        for panel in panels:
+            grid = panel["gridPos"]
+            self.assertGreater(grid["w"], 0)
+            self.assertLessEqual(grid["x"] + grid["w"], 24)
+
     def test_panels_use_the_provisioned_prometheus_datasource(self):
         for panel in self.dashboard["panels"]:
             self.assertEqual(
@@ -110,6 +120,9 @@ class SGLangDashboardTests(unittest.TestCase):
             "sglang:time_to_first_token_seconds_bucket",
             "sglang:spec_accept_rate",
             "sglang:spec_accept_length",
+            "sglang:spec_block_accept_length",
+            "sglang:spec_cap_length",
+            "sglang:num_running_reqs",
         ):
             self.assertIn(metric, rendered)
 

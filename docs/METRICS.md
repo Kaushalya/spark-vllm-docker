@@ -32,8 +32,10 @@ Docker host. Confirm the endpoint first:
 curl http://127.0.0.1:8000/metrics
 ```
 
-For SGLang, include `--enable-metrics` in `sglang serve`; the flag cannot be
-enabled on an already-running server. With the standard SGLang port, verify:
+For SGLang, metrics must be enabled on the server; add `--enable-metrics` to
+`sglang serve` if your build does not expose them by default. The setting
+cannot be changed on an already-running server. With the standard SGLang port,
+verify:
 
 ```bash
 curl http://127.0.0.1:30000/metrics
@@ -133,8 +135,9 @@ imported into Grafana:
 
 The **SGLang DSpark** dashboard queries the SGLang exporter directly for
 request state, cache pressure, latency histograms, and speculative-decoding
-gauges. In this repository's pinned SGLang image, metric names retain the
-`sglang:` prefix with a colon.
+gauges. The SGLang builds used to develop this dashboard expose metric names
+with the `sglang:` prefix, including the colon. If you run a different SGLang
+build, confirm the names against the server's `/metrics` output.
 
 The DSpark panels use:
 
@@ -159,9 +162,10 @@ from these histograms:
 
 SGLang metrics are created when the server starts, but throughput and latency
 panels require request traffic and at least two Prometheus scrapes before they
-show meaningful values. The pinned SGLang image updates the batch-level DSpark
-gauges every 40 decode steps by default, so a very short completion can leave
-those gauges at zero even though token and verification counters increase.
+show meaningful values. The builds used for this dashboard update the
+batch-level DSpark gauges every 40 decode steps by default, so a very short
+completion can leave those gauges at zero even though token and verification
+counters increase.
 
 ## Speculative decoding and MTP panels
 
