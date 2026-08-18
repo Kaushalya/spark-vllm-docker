@@ -195,7 +195,7 @@
           "refId": "A"
         }
       ],
-      "title": "DSpark acceptance rate",
+      "title": "Speculative acceptance rate",
       "type": "stat"
     },
     {
@@ -242,7 +242,7 @@
           "refId": "A"
         }
       ],
-      "title": "DSpark mean accepted length",
+      "title": "Mean accepted length",
       "type": "stat"
     },
     {
@@ -289,7 +289,7 @@
           "refId": "A"
         }
       ],
-      "title": "DSpark block accepted length",
+      "title": "Block accepted length",
       "type": "stat"
     },
     {
@@ -585,7 +585,7 @@
           "refId": "C"
         }
       ],
-      "title": "DSpark accepted and scheduled lengths",
+      "title": "Speculative accepted and scheduled lengths",
       "type": "timeseries"
     },
     {
@@ -633,7 +633,7 @@
           "refId": "A"
         }
       ],
-      "title": "DSpark acceptance rate",
+      "title": "Speculative acceptance rate",
       "type": "timeseries"
     }
   ],
@@ -642,7 +642,7 @@
   "tags": [
     "sglang",
     "prometheus",
-    "dspark"
+    "speculative-decoding"
   ],
   "templating": {
     "list": []
@@ -653,8 +653,8 @@
   },
   "timepicker": {},
   "timezone": "browser",
-  "title": "SGLang DSpark",
+  "title": "SGLang Speculative Decoding",
   "uid": "sglang-dspark",
-  "version": 1,
+  "version": 2,
   "weekStart": ""
 }

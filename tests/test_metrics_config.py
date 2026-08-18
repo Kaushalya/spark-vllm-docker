@@ -107,7 +107,7 @@ class SGLangDashboardTests(unittest.TestCase):
                 {"type": "prometheus", "uid": "prometheus"},
             )
 
-    def test_sglang_and_dspark_metrics_are_queried(self):
+    def test_sglang_speculative_metrics_are_queried(self):
         expressions = {
             target["expr"]
             for panel in self.dashboard["panels"]
@@ -125,6 +125,15 @@ class SGLangDashboardTests(unittest.TestCase):
             "sglang:num_running_reqs",
         ):
             self.assertIn(metric, rendered)
+
+    def test_dashboard_is_method_agnostic(self):
+        self.assertEqual(self.dashboard["title"], "SGLang Speculative Decoding")
+        self.assertIn("speculative-decoding", self.dashboard["tags"])
+        self.assertNotIn("DSpark", self.dashboard["title"])
+
+        panel_titles = {panel["title"] for panel in self.dashboard["panels"]}
+        self.assertIn("Speculative acceptance rate", panel_titles)
+        self.assertIn("Mean accepted length", panel_titles)
 
 
 if __name__ == "__main__":
