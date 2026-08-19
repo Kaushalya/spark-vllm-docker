@@ -19,9 +19,8 @@ The repository includes a ready-to-run monitoring stack:
 - `grafana/provisioning/` configures Prometheus as Grafana's default data source
   and loads dashboards from disk.
 - `grafana/dashboards/vllm-throughput.json` defines the default **vLLM
-  Throughput** dashboard.
-- `grafana/dashboards/vllm-spec-decode.json` defines the **vLLM Speculative
-  Decoding** dashboard.
+  Metrics** dashboard, combining throughput, latency, cache, and
+  speculative-decoding panels.
 - `grafana/dashboards/sglang-dspark.json` defines the **SGLang Speculative
   Decoding** dashboard, including SGLang's native speculative-decoding gauges.
 
@@ -115,7 +114,7 @@ of the head node:
 - Prometheus: `http://<spark-ip>:9090`
 
 The initial Grafana login is `admin` / `admin`. Grafana will ask you to change
-the password after the first login. The provisioned **vLLM Throughput**
+the password after the first login. The provisioned **vLLM Metrics**
 dashboard remains the home dashboard. The vLLM and SGLang dashboards appear in
 the **LLM Inference** folder.
 
@@ -142,7 +141,7 @@ The SGLang dashboard uses the equivalent recording rules:
 | `sglang:prompt_tokens_per_second:rate1m` | Input/prompt tokens per second |
 | `sglang:total_tokens_per_second:rate1m` | Combined input and output tokens per second |
 
-The same dashboard also queries current vLLM metrics directly for latency and
+The vLLM dashboard also queries current vLLM metrics directly for latency and
 KV-cache pressure:
 
 | Panel | Source metric | Display |
@@ -213,12 +212,13 @@ speculative-decoding gauges every 40 decode steps by default, so a very short co
 can leave those gauges at zero even though token and verification counters
 increase.
 
-## Speculative decoding and MTP panels
+## vLLM speculative-decoding and MTP panels
 
-The provisioned **vLLM Speculative Decoding** dashboard
-(`grafana/dashboards/vllm-spec-decode.json`) covers these metrics out of the
-box. It appears in the **LLM Inference** folder and queries the `vllm:spec_decode_*`
-recording rules from the `vllm-spec-decode` group in `prometheus-rules.yaml`:
+The provisioned **vLLM Metrics** dashboard
+(`grafana/dashboards/vllm-throughput.json`) combines throughput, latency,
+cache, and speculative-decoding panels in the **LLM Inference** folder. Its
+speculative-decoding panels query the `vllm:spec_decode_*` recording rules
+from the `vllm-spec-decode` group in `prometheus-rules.yaml`:
 
 - **Draft acceptance rate** — fraction of draft tokens accepted
   (`vllm:spec_decode_acceptance_rate:rate1m`)

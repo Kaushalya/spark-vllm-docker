@@ -157,8 +157,8 @@ curl -sN http://127.0.0.1:8000/v1/completions -H 'Content-Type: application/json
 ```
 
 Acceptance metrics: `curl -s localhost:8000/metrics | grep spec_decode` or the
-**vLLM Speculative Decoding** Grafana dashboard
-(`grafana/dashboards/vllm-spec-decode.json`).
+speculative-decoding panels in the **vLLM Metrics** Grafana dashboard
+(`grafana/dashboards/vllm-throughput.json`).
 
 ## Baseline vs. target
 
