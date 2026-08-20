@@ -38,7 +38,7 @@ class MetricsComposeTests(unittest.TestCase):
         self.assertEqual(jobs["sglang"], ["host.docker.internal:30000"])
 
 
-class PerformanceDashboardTests(unittest.TestCase):
+class VLLMMetricsDashboardTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.dashboard = json.loads(
@@ -80,6 +80,30 @@ class PerformanceDashboardTests(unittest.TestCase):
         ):
             self.assertIn(metric, rendered)
 
+    def test_speculative_decoding_metrics_are_queried(self):
+        expressions = {
+            target["expr"]
+            for panel in self.dashboard["panels"]
+            for target in panel.get("targets", [])
+        }
+        rendered = "\n".join(expressions)
+
+        for metric in (
+            "vllm:spec_decode_acceptance_rate:rate1m",
+            "vllm:spec_decode_mean_accepted_length:rate1m",
+            "vllm:spec_decode_draft_tokens_per_second:rate1m",
+            "vllm:spec_decode_accepted_tokens_per_second:rate1m",
+            "vllm:spec_decode_acceptance_rate_by_pos:rate1m",
+        ):
+            self.assertIn(metric, rendered)
+
+    def test_dashboard_combines_throughput_and_speculative_decoding(self):
+        self.assertEqual(self.dashboard["title"], "vLLM Metrics")
+        self.assertIn("speculative-decoding", self.dashboard["tags"])
+        self.assertFalse(
+            (ROOT / "grafana/dashboards/vllm-spec-decode.json").exists()
+        )
+
 
 class SGLangDashboardTests(unittest.TestCase):
     @classmethod
@@ -107,7 +131,7 @@ class SGLangDashboardTests(unittest.TestCase):
                 {"type": "prometheus", "uid": "prometheus"},
             )
 
-    def test_sglang_and_dspark_metrics_are_queried(self):
+    def test_sglang_speculative_metrics_are_queried(self):
         expressions = {
             target["expr"]
             for panel in self.dashboard["panels"]
@@ -125,6 +149,15 @@ class SGLangDashboardTests(unittest.TestCase):
             "sglang:num_running_reqs",
         ):
             self.assertIn(metric, rendered)
+
+    def test_dashboard_is_method_agnostic(self):
+        self.assertEqual(self.dashboard["title"], "SGLang Speculative Decoding")
+        self.assertIn("speculative-decoding", self.dashboard["tags"])
+        self.assertNotIn("DSpark", self.dashboard["title"])
+
+        panel_titles = {panel["title"] for panel in self.dashboard["panels"]}
+        self.assertIn("Speculative acceptance rate", panel_titles)
+        self.assertIn("Mean accepted length", panel_titles)
 
 
 if __name__ == "__main__":
