@@ -183,6 +183,18 @@ vLLM build containing the Qwen GDN speculative-decoding fixes merged on
 ./run-recipe.sh qwen3.8-27b-nvfp4 --solo --setup
 ```
 
+**Text-only / B12X note:** To serve only the language backbone, append
+`-- --language-model-only`:
+
+```bash
+./run-recipe.sh qwen3.8-27b-nvfp4 --solo --setup -- --language-model-only
+```
+
+Use this recipe with its default `vllm-node` image. Do not override it with
+`-t vllm-node-b12x`: the current B12X runner fails while warming up Qwen3.8's
+native MTP speculative-decoding path (for example, with a `NoneType` attribute
+error in `qwen3_5_mtp.py`).
+
 ### 2026-08-14
 
 #### B12X source branch update
