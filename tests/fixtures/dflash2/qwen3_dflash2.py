@@ -20,6 +20,7 @@ class DFlash2Qwen3ForCausalLM(DFlashQwen3ForCausalLM):
                 "DFlash2 requires an unquantized target LM head for candidate TopK; "
                 f"got {type(self.lm_head.quant_method).__name__}."
             )
+
         selector = self.model.candidate_selector
         logits = self.lm_head.quant_method.apply(self.lm_head, hidden_states, bias=None)
         return selector, logits
