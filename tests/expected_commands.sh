@@ -79,7 +79,7 @@ QWEN38_DFLASH2_ARGS=(
     "--port 8000"
     "--host 0.0.0.0"
     "--tensor-parallel-size 1"
-    "--gpu-memory-utilization 0.5"
+    "--gpu-memory-utilization 0.8"
     "--max-model-len 262144"
     "--max-num-seqs 4"
     "--max-num-batched-tokens 8192"

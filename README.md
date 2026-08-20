@@ -192,6 +192,11 @@ downloaded into the mounted Hugging Face cache when vLLM first starts. Because
 the upstream support is still an open PR, use `--force-build` to refresh the
 experimental image after the PR changes.
 
+The recipe reserves 80% of Spark unified memory for the vLLM executor. The
+combined NVFP4 target and DFlash2 draft exceed a 50% executor budget before any
+KV-cache blocks are allocated; 80% leaves KV-cache capacity while retaining
+20% for the host and supporting services.
+
 ### 2026-08-16
 
 #### Qwen3.8-27B NVFP4 single-Spark recipe

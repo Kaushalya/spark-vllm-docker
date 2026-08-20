@@ -26,7 +26,9 @@ defaults:
   port: 8000
   host: 0.0.0.0
   tensor_parallel: 1
-  gpu_memory_utilization: 0.5
+  # The target plus DFlash2 draft exceed a 50% executor budget before KV-cache
+  # allocation on a 128 GB Spark. Keep 20% available for the host and services.
+  gpu_memory_utilization: 0.8
   max_model_len: 262144
   max_num_seqs: 4
   max_num_batched_tokens: 8192
