@@ -92,11 +92,12 @@
   <header>
     <p class="meta">Benchmark report · <time datetime="2026-11-26">26</time>–<time datetime="2026-11-27">27 November 2026</time> · One DGX Spark</p>
     <h1>Inkling 2 Mini on DGX Spark</h1>
-    <p class="lede">DFlash2 raised single-request decode throughput by <strong>37–41%</strong> over DSpark. A follow-up trial with Humming raised 25.5K-token prefill by <strong>20%</strong> over the original DFlash2 configuration. Both were measured on the same GB10 system.</p>
+    <p class="lede">DFlash2 raised single-request decode throughput by <strong>37–41%</strong> over DSpark. A follow-up trial with Humming raised 25.5K-token prefill by <strong>20%</strong> over the original DFlash2 configuration. Humming also raised coding-task decode throughput by <strong>3.4%</strong> on the same GB10 system.</p>
   </header>
   <nav aria-label="Report sections">
     <ul>
       <li><a href="#humming">Humming results</a></li>
+      <li><a href="#coding">Coding benchmark</a></li>
       <li><a href="#dflash2">DFlash2 results</a></li>
       <li><a href="#dspark">DSpark and CUDA graphs</a></li>
       <li><a href="#verification">Verification</a></li>
@@ -135,6 +136,25 @@
       <li><strong>Decode profile.</strong> Expert GEMMs accounted for about 53% of summed GPU kernel time across 12 profiled decode iterations. The draft output-head projection accounted for 6.6%, or about 4 ms per iteration. That led to the Humming trial.</li>
     </ul>
     <p class="small">Humming repacks Inkling’s existing NVFP4 expert weights for its GPU kernels. <a href="https://vllm-project.github.io/2026/10/19/humming.html">vLLM’s Humming overview</a></p>
+  </section>
+
+  <section id="coding">
+    <h2>Coding benchmark</h2>
+    <p>Humming was faster than Inkling’s default Triton expert kernel on every task with DFlash2. Median decode throughput rose from <strong>55.29 to 57.17 tok/s (+3.4%)</strong>. Humming was faster on all 12 matched requests against both default passes.</p>
+    <div class="table-wrap" role="region" aria-label="Coding benchmark decode throughput by task" tabindex="0">
+      <table>
+        <thead><tr><th scope="col">Task</th><th scope="col" class="numeric">Default (tok/s)</th><th scope="col" class="numeric">Humming (tok/s)</th><th scope="col" class="numeric">Change</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Python TTL LRU cache</th><td class="numeric">55.33</td><td class="numeric">57.17</td><td class="numeric">+3.3%</td></tr>
+          <tr><th scope="row">TypeScript async map</th><td class="numeric">50.44</td><td class="numeric">52.26</td><td class="numeric">+3.6%</td></tr>
+          <tr><th scope="row">Rust log aggregation</th><td class="numeric">49.93</td><td class="numeric">52.14</td><td class="numeric">+4.4%</td></tr>
+          <tr><th scope="row">PostgreSQL event analytics</th><td class="numeric">57.18</td><td class="numeric">59.40</td><td class="numeric">+3.9%</td></tr>
+          <tr><th scope="row">Overall</th><td class="numeric">55.29</td><td class="numeric">57.17</td><td class="numeric">+3.4%</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Median request latency fell from 9.43 s to 9.13 s (−3.2%), and median time to first token fell from 236 ms to 221 ms (−6.1%). DFlash2 draft acceptance was 34.1% in all three passes, with 3.38 output tokens per verification step on average. All 12 Humming response hashes matched the corresponding responses in both default passes. The script measures speed and response hashes. It does not execute the generated code.</p>
+    <p>The suite ran on 27 November with <a href="../benchmark-code-generation.py"><code>benchmark-code-generation.py</code></a>. The backends ran in default → Humming → default order, with one warm-up per launch and three sequential requests per task per pass. Each measured request generated 512 tokens with EOS ignored, temperature 0, seed 42, and Inkling’s reasoning effort set to <code>none</code>. Every pass used seven probabilistic DFlash2 draft tokens. The default column averages the medians of the two <code>--moe-backend auto</code> passes, which reached 55.59 and 55.00 tok/s overall.</p>
   </section>
 
   <section id="dflash2">
@@ -296,7 +316,7 @@
 
   <section id="evidence">
     <h2>Run ledger</h2>
-    <p>These are the first-pass measurements from the 26 November runs. The 27 November follow-up measurements appear in the Humming section. The warmed-kernel medians appear in the dedicated comparison tables. A dash marks an unavailable measurement.</p>
+    <p>These are the first-pass measurements from the 26 November runs. The 27 November follow-up measurements appear in the Humming and coding benchmark sections. The warmed-kernel medians appear in the dedicated comparison tables. A dash marks an unavailable measurement.</p>
     <div class="table-wrap" role="region" aria-label="All benchmark runs" tabindex="0">
   <table class="wide" id="all-runs">
     <thead><tr><th scope="col">Run</th><th scope="col" class="numeric">Ready (s)</th><th scope="col" class="numeric">1 request (tok/s)</th><th scope="col" class="numeric">4 requests (tok/s)</th><th scope="col" class="numeric">Short TTFT (ms)</th><th scope="col" class="numeric">3,302 prefill (tok/s)</th><th scope="col" class="numeric">25,554 prefill (tok/s)</th><th scope="col" class="numeric">Min. host memory available (GiB)</th></tr></thead>
