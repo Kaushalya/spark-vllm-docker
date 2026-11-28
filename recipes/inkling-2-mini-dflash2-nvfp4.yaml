@@ -1,0 +1,48 @@
+# Inkling 2 Mini with full Humming NVFP4 target dense/head/coda + MXFP8 DFlash2 on one DGX Spark.
+# Fastest tested single-Spark configuration for sampled reasoning, 4/8-request concurrency, step latency,
+# and lowest memory footprint: quantizes target dense attention projections (qkvr/wo_ud), target lm_head,
+# and the 4 MXFP8 coda MoE layers (layers 20-23) to NVFP4 via Humming with GB10 tile tuning, while keeping
+# the 5-layer DFlash2 draft backbone in MXFP8 (preserving acceptance) and draft lm_head in NVFP4.
+recipe_version: "1"
+name: Inkling 2 Mini DFlash2 NVFP4
+description: Maximum-throughput single-Spark Inkling 2 Mini config with full Humming NVFP4 target dense/head/coda, GB10 tile tuning, and MXFP8 DFlash2 draft
+
+model: thinkingmachines/Inkling-2-Mini
+container: vllm/vllm-openai@sha256:c2dc759f5984f69c1e2418c6af7c26eb756f5ed2a8934c768ae1253645d1449e
+pull_image: true
+solo_only: true
+
+mods:
+  - mods/inkling2-dflash2
+  - mods/inkling2-perf-opt
+
+env:
+  INKLING2_OPT_MOE: "coda_nvfp4"
+  INKLING2_OPT_W4A4_TUNE: "1"
+  INKLING2_OPT_W4A16_TUNE: "1"
+  INKLING2_OPT_DFLASH_LMHEAD: "nvfp4"
+  INKLING2_OPT_DFLASH_BACKBONE: "mxfp8"
+  INKLING2_OPT_TARGET_DENSE: "nvfp4_all"
+
+defaults:
+  port: 8000
+  host: 0.0.0.0
+  tensor_parallel: 1
+  max_model_len: 262144
+  gpu_memory_utilization: 0.8
+
+command: |
+  vllm serve thinkingmachines/Inkling-2-Mini \
+    --revision c9d028302cd0f035fdf8e7e91f089a4ce94d2195 \
+    --tokenizer-revision c9d028302cd0f035fdf8e7e91f089a4ce94d2195 \
+    --host {host} \
+    --port {port} \
+    --tensor-parallel-size {tensor_parallel} \
+    --max-model-len {max_model_len} \
+    --gpu-memory-utilization {gpu_memory_utilization} \
+    --reasoning-parser inkling \
+    --enable-auto-tool-choice \
+    --tool-call-parser inkling \
+    --moe-backend humming \
+    --compilation-config '{{"prefill_cudagraph_capture_token_sizes":[1,2,4,8,16,24,32,48,64,96,128,192,256,384,512]}}' \
+    --speculative-config '{{"method":"dflash","model":"incoai/Inkling-2-Mini-DFlash2","revision":"4f9088ea66c21f2b99ed657d1941c306b03e84d2","num_speculative_tokens":7,"draft_sample_method":"probabilistic"}}'

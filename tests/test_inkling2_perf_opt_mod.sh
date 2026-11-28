@@ -40,6 +40,19 @@ fixtures = {
     def process_weights_after_loading(self) -> None:
         if self.sm100 or (self.sm120 and not self.humming_nvfp4):
             return
+        weights = {}
+        for name in ("w13", "w2"):
+            amax, denominator = self.scales(name)
+            global_scale = None
+            if amax is not None and denominator is not None:
+                global_scale = (
+                    self.ones if self.humming_nvfp4 else amax.data / denominator.data
+                )
+            weights[name] = (
+                getattr(self, f"{name}_weight").data,
+                getattr(self, f"{name}_weight_scale").data,
+                global_scale,
+            )
         self.humming = (
             HummingNVFP4Experts(weights, self.shapes)
             if self.humming_nvfp4
