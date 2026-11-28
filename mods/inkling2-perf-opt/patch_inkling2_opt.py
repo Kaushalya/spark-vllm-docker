@@ -31,9 +31,10 @@ PATCHES: dict[str, tuple[tuple[str, str], ...]] = {
             and vllm_config is not None
             and vllm_config.kernel_config.moe_backend == "humming"
         )
+        self.quant_coda_to_nvfp4 = _is_humming and (not self.nvfp4) and _opt_moe in ("coda_nvfp4", "w4a16_coda_nvfp4")
         self.use_humming_a16 = _is_humming and (
-            _opt_moe in ("w4a16", "w4a16_sk")
-            or (_opt_moe == "mxfp8_only" and not self.nvfp4)
+            _opt_moe in ("w4a16", "w4a16_sk", "w4a16_coda_nvfp4")
+            or (_opt_moe in ("mxfp8_only", "coda_nvfp4") and not self.nvfp4)
         )
         self.humming_stream_k = _opt_moe == "w4a16_sk" and self.nvfp4
         self.humming_nvfp4 = _is_humming and self.nvfp4 and not self.use_humming_a16
@@ -48,16 +49,54 @@ PATCHES: dict[str, tuple[tuple[str, str], ...]] = {
             "            return\n",
         ),
         (
+            "        weights = {}\n"
+            '        for name in ("w13", "w2"):\n'
+            "            amax, denominator = self.scales(name)\n"
+            "            global_scale = None\n"
+            "            if amax is not None and denominator is not None:\n"
+            "                global_scale = (\n"
+            "                    self.ones if self.humming_nvfp4 else amax.data / denominator.data\n"
+            "                )\n"
+            "            weights[name] = (\n"
+            '                getattr(self, f"{name}_weight").data,\n'
+            '                getattr(self, f"{name}_weight_scale").data,\n'
+            "                global_scale,\n"
+            "            )\n"
             "        self.humming = (\n"
             "            HummingNVFP4Experts(weights, self.shapes)\n"
             "            if self.humming_nvfp4\n"
             "            else HummingExperts(weights, self.shapes, self.nvfp4)\n"
             "        )\n",
-            """        self.humming = (
+            """        from .inkling2_humming_opt import (
+            quantize_mxfp8_experts_to_nvfp4,
+            tune_humming_experts_gb10,
+        )
+        weights = {}
+        effective_nvfp4 = self.nvfp4 or self.quant_coda_to_nvfp4
+        for name in ("w13", "w2"):
+            if self.quant_coda_to_nvfp4:
+                weights[name] = quantize_mxfp8_experts_to_nvfp4(
+                    getattr(self, f"{name}_weight").data,
+                    getattr(self, f"{name}_weight_scale").data,
+                )
+            else:
+                amax, denominator = self.scales(name)
+                global_scale = None
+                if amax is not None and denominator is not None:
+                    global_scale = (
+                        self.ones if self.humming_nvfp4 else amax.data / denominator.data
+                    )
+                weights[name] = (
+                    getattr(self, f"{name}_weight").data,
+                    getattr(self, f"{name}_weight_scale").data,
+                    global_scale,
+                )
+        self.humming = (
             HummingNVFP4Experts(weights, self.shapes)
             if self.humming_nvfp4
-            else HummingExperts(weights, self.shapes, self.nvfp4)
+            else HummingExperts(weights, self.shapes, effective_nvfp4)
         )
+        tune_humming_experts_gb10(self.humming, effective_nvfp4, self.humming_nvfp4)
         if self.humming_stream_k and self.humming is not None:
             import json
             for _name in ("w13", "w2"):
@@ -145,16 +184,24 @@ PATCHES: dict[str, tuple[tuple[str, str], ...]] = {
         self._humming_k = None
         self._humming_v = None
         self._humming_wo = None
-        if _td in ("mxfp8", "mxfp8_all"):
+        _dense_mode = (
+            "mxfp8" if _td in ("mxfp8", "mxfp8_all")
+            else "nvfp4" if _td in ("nvfp4", "nvfp4_mxfp8_head", "nvfp4_all")
+            else ""
+        )
+        if _dense_mode:
             from .inkling2_humming_opt import HummingDenseOp
             w = self.qkvr.weight.data
             q_side, kv_size = sum(self.split_sizes[:4]), self.split_sizes[4]
             k_end = q_side + kv_size
-            self._humming_qkvr_full = HummingDenseOp(w, mode="mxfp8", use_stream_k=False)
-            self._humming_q_side = HummingDenseOp(w[: sum(self.q_side_splits)], mode="mxfp8", use_stream_k=False)
-            self._humming_k = HummingDenseOp(w[q_side:k_end], mode="mxfp8", use_stream_k=False)
-            self._humming_v = HummingDenseOp(w[k_end : k_end + kv_size], mode="mxfp8", use_stream_k=False)
-            self._humming_wo = HummingDenseOp(self.wo_ud.weight.data, mode="mxfp8", use_stream_k=False)
+            # Full-attn layers never share x_q==x_k==x_v; local non-loop layers always share.
+            if self.is_local:
+                self._humming_qkvr_full = HummingDenseOp(w, mode=_dense_mode, use_stream_k=False)
+            if (not self.is_local) or len(self.conv_states) > 1:
+                self._humming_q_side = HummingDenseOp(w[: sum(self.q_side_splits)], mode=_dense_mode, use_stream_k=False)
+                self._humming_k = HummingDenseOp(w[q_side:k_end], mode=_dense_mode, use_stream_k=False)
+                self._humming_v = HummingDenseOp(w[k_end : k_end + kv_size], mode=_dense_mode, use_stream_k=False)
+            self._humming_wo = HummingDenseOp(self.wo_ud.weight.data, mode=_dense_mode, use_stream_k=False)
             self.qkvr.weight.data = w.new_empty((0,))
             self.wo_ud.weight.data = self.wo_ud.weight.data.new_empty((0,))
 """,
@@ -170,8 +217,8 @@ PATCHES: dict[str, tuple[tuple[str, str], ...]] = {
             "        projected = linear(x_q, weight[: sum(self.q_side_splits)])\n"
             "        k = linear(x_k, weight[q_side:k_end])\n"
             "        v = linear(x_v, weight[k_end : k_end + kv_size])\n",
-            """        if getattr(self, "_humming_qkvr_full", None) is not None:
-            if x_k is x_q and x_v is x_q:
+            """        if getattr(self, "_humming_qkvr_full", None) is not None or getattr(self, "_humming_q_side", None) is not None:
+            if x_k is x_q and x_v is x_q and self._humming_qkvr_full is not None:
                 projected = self._humming_qkvr_full(x_q)
                 return list(projected.split(self.split_sizes, dim=-1)[:6])
             projected = self._humming_q_side(x_q)
@@ -213,12 +260,18 @@ PATCHES: dict[str, tuple[tuple[str, str], ...]] = {
             "                hidden_states, lm_head.weight, embedding_bias, out_dtype=torch.float32\n"
             "            )\n",
             """        import os
-        if os.environ.get("INKLING2_OPT_TARGET_DENSE", "").strip().lower() == "mxfp8_all":
+        _td = os.environ.get("INKLING2_OPT_TARGET_DENSE", "").strip().lower()
+        _head_mode = (
+            "mxfp8" if _td in ("mxfp8_all", "nvfp4_mxfp8_head")
+            else "nvfp4" if _td == "nvfp4_all"
+            else ""
+        )
+        if _head_mode:
             op = getattr(lm_head, "_humming_target_lmhead_op", None)
             if op is None:
                 from .inkling2_humming_opt import HummingDenseOp
                 op = HummingDenseOp(
-                    lm_head.weight.data, mode="mxfp8", use_stream_k=False, slice_n=True
+                    lm_head.weight.data, mode=_head_mode, use_stream_k=False, slice_n=True
                 )
                 lm_head._humming_target_lmhead_op = op
             out = op(hidden_states)
